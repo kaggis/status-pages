@@ -1,6 +1,7 @@
 import { authKeycloak } from "@/middleware/auth";
 import { fetchReports } from "@/service/reports";
 import { AuthenticatedRequest, ReqSimple, ResError, ResReport } from "@/types/common";
+import { decryptSecret } from "@/utils/crypto";
 import { FastifyInstance, FastifyPluginOptions, FastifyReply } from "fastify";
 
 export default async function reportRoutes(
@@ -60,7 +61,7 @@ export default async function reportRoutes(
     const { api, secret } = request.body as ReqSimple;
 
     try {
-      const reports = await fetchReports(api, secret);
+      const reports = await fetchReports(api, decryptSecret(secret));
       console.log(reports)
       return reports; 
     } catch (err) {

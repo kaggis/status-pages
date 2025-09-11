@@ -2,6 +2,7 @@ import { authKeycloak } from "@/middleware/auth";
 import { fetchGroups } from "@/service/groups";
 import { fetchReports } from "@/service/reports";
 import { AuthenticatedRequest, ReqReport, ResError, ResGroupStatus, ResReport } from "@/types/common";
+import { decryptSecret } from "@/utils/crypto";
 import { FastifyInstance, FastifyPluginOptions, FastifyReply } from "fastify";
 
 export default async function groupRoutes(
@@ -65,7 +66,7 @@ export default async function groupRoutes(
     const { api, secret, report } = request.body as ReqReport;
 
     try {
-      const groups = await fetchGroups(api, secret, report);
+      const groups = await fetchGroups(api, decryptSecret(secret), report);
       return groups; 
     } catch (err) {
       console.log("oups an error happened!")

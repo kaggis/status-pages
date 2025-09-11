@@ -14,7 +14,7 @@ type GroupStatus = {
 }
 
 export const useGroupsMutation = () => {
-  const { token } = useAuth() // Get token from your auth context
+  const { token } = useAuth(); 
 
   return useMutation<GroupStatus[], Error, ApiGroup>({
     mutationFn: (data: ApiGroup) => {
