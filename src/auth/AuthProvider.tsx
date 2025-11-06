@@ -29,6 +29,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
 
     initKeycloak({
       onLoad: 'check-sso',
+      scope: import.meta.env.VITE_KEYCLOAK_SCOPES,
       pkceMethod: 'S256',
       //silentCheckSsoRedirectUri: `${new URL(redirectBase).origin}/silent-check-sso.html`,
       checkLoginIframe: false,
