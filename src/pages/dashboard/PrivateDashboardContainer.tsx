@@ -4,6 +4,7 @@ import { useGetResultsGroups, useGetStatusGroups } from '@/hooks/useData'
 import { useSelectedTenant } from '@/contexts/selected-tenant/useSelectedTenant'
 import { useParams } from 'react-router-dom'
 import Dashboard from './Dashboard'
+import { useGetTenantDowntimes } from '@/hooks/useDowntimes'
 
 const PrivateDashboardContainer = () => {
   const { id: tenantId } = useParams<{ id: string }>()
@@ -46,6 +47,19 @@ const PrivateDashboardContainer = () => {
   )
 
   const {
+    data: downtimesData,
+    isLoading: downtimesLoading,
+    error: downtimesError,
+  } = useGetTenantDowntimes(
+    tenantId ?? '',
+    100,
+    new Date().toISOString().split('T')[0],
+    true,
+  )
+
+  const downtimes = downtimesData?.pages.flatMap((page) => page.content) ?? []
+
+  const {
     data: statusData,
     isLoading: statusLoading,
     error: statusError,
@@ -70,6 +84,9 @@ const PrivateDashboardContainer = () => {
       tenantName={tenantName}
       tenantId={tenantId}
       reports={reports}
+      downtimesData={downtimes}
+      downtimesLoading={downtimesLoading}
+      downtimesError={downtimesError}
       reportsLoading={reportsLoading}
       reportsError={reportsError ?? null}
       resultsData={resultsData}

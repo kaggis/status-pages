@@ -7,6 +7,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  HardDriveIcon,
   Info,
   Server,
   ShieldCheck,
@@ -19,6 +20,9 @@ import SearchInput from '@/components/SearchInput'
 import SelectDropdown from '@/components/SelectDropdown'
 import type { SelectOption } from '@/components/SelectDropdown'
 import type { GroupResultsResponse, GroupStatusResponse } from '@/types/data'
+import type { Downtime } from '@/types/downtimes'
+import { WrenchScrewdriverIcon } from '@heroicons/react/24/outline'
+import { categoriseDowntimes, fmtDowntimeDailyRange } from '@/utils/downtimes'
 
 const WEEK_DAY_COUNT = 7
 
@@ -46,6 +50,105 @@ const buildReportOptions = (
   }
   return options
 }
+
+// List styles for each downtime type section
+const DOWNTIME_TYPE_STYLES: Record<
+  DowntimeType,
+  {
+    label: string
+    labelClass: string
+    pillClass: string
+    nameClass: string
+    timeClass: string
+  }
+> = {
+  active: {
+    label: 'Active',
+    labelClass: 'text-green-700',
+    pillClass: 'bg-green-50 border-green-700',
+    nameClass: 'font-bold text-green-700',
+    timeClass: 'text-gray-600',
+  },
+  upcoming: {
+    label: 'Upcoming',
+    labelClass: 'text-amber-700',
+    pillClass: 'bg-amber-100 border-amber-700',
+    nameClass: 'font-medium text-amber-700',
+    timeClass: 'text-gray-600',
+  },
+  completed: {
+    label: 'Completed',
+    labelClass: 'text-gray-700',
+    pillClass: 'bg-white border-gray-200',
+    nameClass: 'font-medium text-gray-700',
+    timeClass: 'text-gray-400',
+  },
+}
+
+// Inline component that creates a downtime info chip
+function DowntimeChip({
+  item,
+  downtimeType,
+}: {
+  item: Downtime
+  downtimeType: DowntimeType
+}) {
+  const s = DOWNTIME_TYPE_STYLES[downtimeType]
+  return (
+    <span
+      className={`tooltip tooltip-bottom cursor-pointer inline-flex items-center gap-1.5 rounded-full border mx-0.5 px-2.5 py-0.5 text-[12px] ${s.pillClass}`}
+    >
+      <div className="tooltip-content text-[12px]">
+        <div className="font-bold mb-1">Downtime: {item.name}</div>
+        <div>start: {item.scheduled_at}</div>
+        <div>end: {item.completed_at}</div>
+        <div className="font-bold mb-1 mt-2">Affected endpoints:</div>
+        <ul>
+          {(item.services ?? []).map((s2, i) => (
+            <li key={`${s2.hostname}-${s2.service}-${i}`}>
+              <HardDriveIcon size={16} className="inline me-2 text-10" />
+              {s2.hostname}({s2.service})
+            </li>
+          ))}
+        </ul>
+      </div>
+      <span className={s.nameClass}>{item.name}</span>
+      <span className={s.timeClass}>
+        {fmtDowntimeDailyRange(item.scheduled_at, item.completed_at || '')}
+      </span>
+    </span>
+  )
+}
+
+// Inline component that creates a downtime section
+function DowntimeTypeSection({
+  downtimeType,
+  items,
+}: {
+  downtimeType: DowntimeType
+  items: Downtime[]
+}) {
+  if (items.length === 0) return null
+  const s = DOWNTIME_TYPE_STYLES[downtimeType]
+  return (
+    <>
+      <span className="mx-1">·</span>
+      <span className={`ms-1 text-[13px] me-1 ${s.labelClass}`}>
+        {s.label}:
+      </span>
+      {items.map((item, i) => (
+        <DowntimeChip
+          key={item.name ?? i}
+          item={item}
+          downtimeType={downtimeType}
+        />
+      ))}
+    </>
+  )
+}
+
+// groups of available downtype types
+type DowntimeType = 'active' | 'upcoming' | 'completed'
 
 type ServiceStatus = 'healthy' | 'degraded' | 'critical' | 'missing'
 
@@ -307,6 +410,9 @@ export interface DashboardProps {
   reports: Array<{ name: string; public?: boolean }> | undefined
   reportsLoading: boolean
   reportsError: Error | null
+  downtimesData?: Downtime[]
+  downtimesLoading?: boolean
+  downtimesError?: Error | null
   resultsData: GroupResultsResponse | undefined
   resultsLoading: boolean
   resultsError: Error | null
@@ -323,6 +429,9 @@ const Dashboard = ({
   reports,
   reportsLoading,
   reportsError,
+  downtimesData,
+  downtimesLoading,
+  downtimesError,
   resultsData,
   resultsLoading,
   resultsError,
@@ -514,9 +623,14 @@ const Dashboard = ({
     (!reports?.length ||
       (!resultsData?.data?.length && !statusData?.data?.length))
 
+  const { activeDowntimes, completedDowntimes, upcomingDowntimes } = useMemo(
+    () => categoriseDowntimes(downtimesData),
+    [downtimesData],
+  )
+
   return (
     <div className="page-container">
-      <div className="flex flex-col gap-2 mb-4">
+      <div className="flex flex-col gap-2 mb-2">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <PageHeader
             title="Dashboard"
@@ -621,7 +735,7 @@ const Dashboard = ({
       ) : (
         <>
           <div
-            className={`mb-6 flex flex-wrap items-center gap-3 rounded-xl border px-5 py-2 ${b.border} ${b.bg}`}
+            className={`flex flex-wrap items-center gap-3 rounded-xl border px-5 py-2 ${b.border} ${b.bg}`}
           >
             <BannerIcon
               className={`h-5 w-5 flex-shrink-0 ${b.headline}`}
@@ -637,8 +751,30 @@ const Dashboard = ({
               </span>
             </div>
           </div>
-
-          <div className="mb-6 flex flex-wrap items-center rounded-md border border-neutral-200 bg-white px-1 py-2">
+          {/* Display downtimes banner if downtimes exist for today */}
+          {!downtimesError && !downtimesLoading && downtimesData && (
+            <div className="mt-2 flex flex-wrap items-center gap-3 rounded-xl border px-5 py-2 bg-gray-50 text-gray-600 ring-gray-500/20">
+              <WrenchScrewdriverIcon className="w-4 h-4" />
+              <div className="min-w-0 flex-1">
+                <span className="text-[14px] font-semibold">
+                  {`${downtimesData.length} downtimes today`}
+                </span>
+                <DowntimeTypeSection
+                  downtimeType="active"
+                  items={activeDowntimes}
+                />
+                <DowntimeTypeSection
+                  downtimeType="upcoming"
+                  items={upcomingDowntimes}
+                />
+                <DowntimeTypeSection
+                  downtimeType="completed"
+                  items={completedDowntimes}
+                />
+              </div>
+            </div>
+          )}
+          <div className="mt-2 mb-6 flex flex-wrap items-center rounded-md border border-neutral-200 bg-white px-1 py-2">
             <NowItem icon={Activity} label="Tenant status">
               <span
                 className={`h-2 w-2 rounded-full ${STATUS_STYLES[overall.state].dot}`}

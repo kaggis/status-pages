@@ -28,7 +28,7 @@ export type Downtime = {
   severity: DowntimeSeverity
   message?: string
   scheduled_at: string
-  completed_at?: string
+  completed_at: string
   classification: DowntimeClassification
   services: DowntimeServiceResponse[]
   created_by: string
