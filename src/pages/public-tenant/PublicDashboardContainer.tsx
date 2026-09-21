@@ -1,13 +1,19 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useGetPublicTenantReports } from '@/hooks/useTenants'
-import { useGetResultsGroups, useGetStatusGroups } from '@/hooks/useData'
+import {
+  useGetLatestProblems,
+  useGetResultsGroups,
+  useGetStatusGroups,
+} from '@/hooks/useData'
 import { useTenantName } from '@/hooks/useTenantName'
 import Dashboard from '@/pages/dashboard/Dashboard'
 import { useGetResultsEndpoints } from '@/hooks/results'
 import { useGetTenantDowntimes } from '@/hooks/useDowntimes'
 import { useGetTenantIncidents } from '@/hooks/useIncidents'
 import { useGetStatusTimelineAllEndpoints } from '@/hooks/useStatusTimeline'
+import type { LatestMetricData } from '@/types/latestProblems'
+import { buildStatusTimelineHref } from '@/utils/latestProblems'
 import { useSelectedPublicReport } from './hooks/useSelectedPublicReport'
 
 const toUtcDate = (d: Date) => d.toISOString().split('T')[0]
@@ -74,6 +80,27 @@ const PublicDashboardContainer = () => {
     undefined,
     '1w',
     !!selectedReport,
+  )
+
+  // Public latest-data is addressed by tenant NAME + report NAME
+  const {
+    data: latestProblemsData,
+    isLoading: latestProblemsLoading,
+    error: latestProblemsError,
+    dataUpdatedAt: latestProblemsUpdatedAt,
+  } = useGetLatestProblems(tenantName ?? '', 'public', selectedReport ?? '', {
+    enabled: !!selectedReport,
+  })
+
+  // ⚠️ Assumed public status route; adjust to match your router
+  const getMetricStatusHref = useCallback(
+    (check: LatestMetricData) =>
+      buildStatusTimelineHref(
+        `/public/tenants/${encodeURIComponent(tenantName ?? '')}/status`,
+        selectedReport ?? '',
+        check,
+      ),
+    [tenantName, selectedReport],
   )
 
   const {
@@ -161,6 +188,13 @@ const PublicDashboardContainer = () => {
       endpointStatusData={endpointStatusData}
       endpointStatusLoading={endpointStatusLoading}
       endpointStatusError={endpointStatusError ?? null}
+      latestProblems={{
+        data: latestProblemsData,
+        isLoading: latestProblemsLoading,
+        error: latestProblemsError ?? null,
+        updatedAt: latestProblemsUpdatedAt || undefined,
+        getMetricHref: getMetricStatusHref,
+      }}
       selectedReport={selectedReport}
       onReportChange={setReportParam}
       onGroupSelect={(name) => openGroup(name)}

@@ -1,8 +1,10 @@
 import {
+  fetchLatestMetricData,
   fetchResultsGroupDetails,
   fetchResultsGroupEndpoints,
   fetchResultsGroups,
   fetchStatusGroups,
+  type LatestMetricDataParams,
 } from '@/api/data'
 import { useAuth } from '@/auth/useAuth'
 import type { AccessMode } from '@/types/common'
@@ -12,6 +14,11 @@ import type {
   GroupResultsResponse,
   GroupStatusResponse,
 } from '@/types/data'
+import type {
+  LatestMetricData,
+  LatestMetricDataResponse,
+} from '@/types/latestProblems'
+import { selectLatestProblems } from '@/utils/latestProblems'
 import { useQuery } from '@tanstack/react-query'
 
 export const useGetResultsGroups = (
@@ -175,5 +182,67 @@ export const useGetResultsGroupEndpoints = (
       !!tenantIdentifier &&
       !!report &&
       !!groupName,
+  })
+}
+
+interface UseGetLatestProblemsOptions extends LatestMetricDataParams {
+  enabled?: boolean
+  /** Polling interval in ms; set to false to disable */
+  refetchInterval?: number | false
+}
+
+/**
+ * Latest problematic checks (non-OK) for a report, newest first.
+ * Uses strict mode so each metric appears once with its current state.
+ * In private mode `report` is the report ID.
+ */
+export const useGetLatestProblems = (
+  tenantIdentifier: string,
+  mode: AccessMode,
+  report: string,
+  {
+    filter = 'all',
+    limit = 500,
+    strict = true,
+    group,
+    enabled = true,
+    refetchInterval = 60_000,
+  }: UseGetLatestProblemsOptions = {},
+) => {
+  const { token } = useAuth()
+
+  return useQuery<LatestMetricDataResponse, Error, LatestMetricData[]>({
+    queryKey: [
+      'latest-problems',
+      mode,
+      tenantIdentifier,
+      report,
+      group ?? null,
+      filter,
+      limit,
+      strict,
+    ],
+    queryFn: () => {
+      if (mode === 'private' && !token) {
+        throw new Error('No authentication token available')
+      }
+      if (!tenantIdentifier) throw new Error('Tenant identifier is required')
+      return fetchLatestMetricData(
+        tenantIdentifier,
+        report,
+        mode,
+        mode === 'private' ? token : undefined,
+        { filter, limit, strict, group },
+      )
+    },
+    select: selectLatestProblems,
+    retry: false,
+    refetchOnMount: 'always',
+    refetchInterval,
+    enabled:
+      enabled &&
+      (mode === 'private' ? !!token : true) &&
+      !!tenantIdentifier &&
+      !!report,
   })
 }

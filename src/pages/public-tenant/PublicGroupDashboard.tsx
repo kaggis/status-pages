@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useGetPublicTenantReports } from '@/hooks/useTenants'
 import {
+  useGetLatestProblems,
   useGetResultsGroupDetails,
   useGetResultsGroupEndpoints,
 } from '@/hooks/useData'
@@ -12,6 +13,8 @@ import {
 import { useGetTenantDowntimes } from '@/hooks/useDowntimes'
 import { useGetTenantIncidents } from '@/hooks/useIncidents'
 import { useTenantName } from '@/hooks/useTenantName'
+import type { LatestMetricData } from '@/types/latestProblems'
+import { buildStatusTimelineHref } from '@/utils/latestProblems'
 import GroupDashboard from '@/pages/dashboard/GroupDashboard'
 import { useSelectedPublicReport } from './hooks/useSelectedPublicReport'
 
@@ -144,6 +147,45 @@ const PublicGroupDashboard = () => {
     enabled,
   )
 
+  /*
+   * Latest failing checks for this group (public: tenant NAME + report NAME).
+   */
+  const {
+    data: latestProblemsData,
+    isLoading: latestProblemsLoading,
+    error: latestProblemsError,
+    dataUpdatedAt: latestProblemsUpdatedAt,
+  } = useGetLatestProblems(tenantName ?? '', 'public', selectedReport ?? '', {
+    group: groupName,
+    enabled,
+  })
+
+  // ⚠️ Assumed public status route; adjust to match your router
+  const getMetricStatusHref = useCallback(
+    (check: LatestMetricData) =>
+      buildStatusTimelineHref(
+        `/public/tenants/${encodeURIComponent(tenantName ?? '')}/status`,
+        selectedReport ?? '',
+        check,
+      ),
+    [tenantName, selectedReport],
+  )
+
+  // Focus an endpoint row on this page via ?endpoint=
+  const focusEndpointOnPage = useCallback(
+    (endpointName: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('endpoint', endpointName)
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
   const {
     data: downtimesData,
     isLoading: downtimesLoading,
@@ -197,6 +239,14 @@ const PublicGroupDashboard = () => {
       incidentsData={incidents}
       incidentsLoading={incidentsLoading}
       incidentsError={incidentsError ?? null}
+      latestProblems={{
+        data: latestProblemsData,
+        isLoading: latestProblemsLoading,
+        error: latestProblemsError ?? null,
+        updatedAt: latestProblemsUpdatedAt || undefined,
+        getMetricHref: getMetricStatusHref,
+      }}
+      onEndpointFocus={focusEndpointOnPage}
       onBack={backToDashboard}
     />
   )

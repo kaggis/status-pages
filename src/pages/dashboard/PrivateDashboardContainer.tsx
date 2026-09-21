@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useGetTenantReports } from '@/hooks/useTenants'
-import { useGetResultsGroups, useGetStatusGroups } from '@/hooks/useData'
+import {
+  useGetLatestProblems,
+  useGetResultsGroups,
+  useGetStatusGroups,
+} from '@/hooks/useData'
 import { useGetTenantDowntimes } from '@/hooks/useDowntimes'
 import { useGetTenantIncidents } from '@/hooks/useIncidents'
 import { useCanManageIncidents } from '@/hooks/useCanManageIncidents'
 import { useSelectedTenant } from '@/contexts/selected-tenant/useSelectedTenant'
+import type { LatestMetricData } from '@/types/latestProblems'
+import { buildStatusTimelineHref } from '@/utils/latestProblems'
 import Dashboard from './Dashboard'
 import { useGetResultsEndpoints } from '@/hooks/results'
 import { useGetStatusTimelineAllEndpoints } from '@/hooks/useStatusTimeline'
@@ -48,6 +54,7 @@ const PrivateDashboardContainer = () => {
   }, [reports, selectedReportValid, setSelectedReport])
 
   const today = toUtcDate(new Date())
+  const reportReady = !!selectedReport && selectedReportValid
 
   const { startTime, endTime } = useMemo(() => {
     const now = new Date(`${today}T00:00:00Z`)
@@ -72,7 +79,7 @@ const PrivateDashboardContainer = () => {
     selectedReport,
     endpointStatusStartTime,
     endpointStatusEndTime,
-    !!selectedReport && selectedReportValid,
+    reportReady,
   )
 
   const {
@@ -85,7 +92,7 @@ const PrivateDashboardContainer = () => {
     selectedReport,
     undefined,
     '1w',
-    !!selectedReport && selectedReportValid,
+    reportReady,
   )
 
   const {
@@ -99,7 +106,31 @@ const PrivateDashboardContainer = () => {
     startTime,
     endTime,
     'daily',
-    !!selectedReport && selectedReportValid,
+    reportReady,
+  )
+
+  // The private latest-data endpoint is addressed by report ID, not name
+  const selectedReportId =
+    reports?.find((r) => r.name === selectedReport)?.id ?? ''
+
+  const {
+    data: latestProblemsData,
+    isLoading: latestProblemsLoading,
+    error: latestProblemsError,
+    dataUpdatedAt: latestProblemsUpdatedAt,
+  } = useGetLatestProblems(tenantId ?? '', 'private', selectedReportId, {
+    enabled: reportReady && !!selectedReportId,
+  })
+
+  // Deep link to the status timeline for a single metric (uses report NAME)
+  const getMetricStatusHref = useCallback(
+    (check: LatestMetricData) =>
+      buildStatusTimelineHref(
+        `/tenants/${tenantId}/status`,
+        selectedReport,
+        check,
+      ),
+    [tenantId, selectedReport],
   )
 
   const {
@@ -134,7 +165,7 @@ const PrivateDashboardContainer = () => {
     'private',
     selectedReport,
     undefined,
-    !!selectedReport && selectedReportValid,
+    reportReady,
   )
 
   const openGroup = (groupName: string, endpointName?: string) => {
@@ -177,6 +208,13 @@ const PrivateDashboardContainer = () => {
       endpointStatusData={endpointStatusData}
       endpointStatusLoading={endpointStatusLoading}
       endpointStatusError={endpointStatusError ?? null}
+      latestProblems={{
+        data: latestProblemsData,
+        isLoading: latestProblemsLoading,
+        error: latestProblemsError ?? null,
+        updatedAt: latestProblemsUpdatedAt || undefined,
+        getMetricHref: getMetricStatusHref,
+      }}
       statusData={statusData}
       statusLoading={statusLoading}
       statusError={statusError ?? null}

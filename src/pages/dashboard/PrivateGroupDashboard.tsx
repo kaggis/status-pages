@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { useGetTenantReports } from '@/hooks/useTenants'
 import {
+  useGetLatestProblems,
   useGetResultsGroupDetails,
   useGetResultsGroupEndpoints,
 } from '@/hooks/useData'
@@ -14,6 +15,8 @@ import { useGetTenantDowntimes } from '@/hooks/useDowntimes'
 import { useGetTenantIncidents } from '@/hooks/useIncidents'
 import { useCanManageIncidents } from '@/hooks/useCanManageIncidents'
 import { useSelectedTenant } from '@/contexts/selected-tenant/useSelectedTenant'
+import type { LatestMetricData } from '@/types/latestProblems'
+import { buildStatusTimelineHref } from '@/utils/latestProblems'
 
 import GroupDashboard from './GroupDashboard'
 
@@ -129,6 +132,45 @@ const PrivateGroupDashboard = () => {
     enabled,
   )
 
+  // Group-scoped latest data: /v1/tenants/{id}/report/{report-id}/groups/{group-name}/latest-data
+  const selectedReportId =
+    reports?.find((r) => r.name === selectedReport)?.id ?? ''
+
+  const {
+    data: latestProblemsData,
+    isLoading: latestProblemsLoading,
+    error: latestProblemsError,
+    dataUpdatedAt: latestProblemsUpdatedAt,
+  } = useGetLatestProblems(tenantId ?? '', 'private', selectedReportId, {
+    group: groupName,
+    enabled: enabled && !!selectedReportId,
+  })
+
+  const getMetricStatusHref = useCallback(
+    (check: LatestMetricData) =>
+      buildStatusTimelineHref(
+        `/tenants/${tenantId}/status`,
+        selectedReport,
+        check,
+      ),
+    [tenantId, selectedReport],
+  )
+
+  // Focus an endpoint row on this page via ?endpoint=
+  const focusEndpointOnPage = useCallback(
+    (endpointName: string) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('endpoint', endpointName)
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
   const {
     data: downtimesData,
     isLoading: downtimesLoading,
@@ -192,6 +234,14 @@ const PrivateGroupDashboard = () => {
       incidentsLoading={incidentsLoading}
       incidentsError={incidentsError ?? null}
       canManageIncidents={canManage}
+      latestProblems={{
+        data: latestProblemsData,
+        isLoading: latestProblemsLoading,
+        error: latestProblemsError ?? null,
+        updatedAt: latestProblemsUpdatedAt || undefined,
+        getMetricHref: getMetricStatusHref,
+      }}
+      onEndpointFocus={focusEndpointOnPage}
       onBack={backToDashboard}
     />
   )

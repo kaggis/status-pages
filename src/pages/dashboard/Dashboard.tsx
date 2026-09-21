@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -30,6 +31,7 @@ import ErrorDisplay from '@/components/ErrorDisplay'
 import SearchInput from '@/components/SearchInput'
 import SelectDropdown from '@/components/SelectDropdown'
 import type { GroupResultsResponse, GroupStatusResponse } from '@/types/data'
+import type { LatestMetricData } from '@/types/latestProblems'
 import type { Downtime } from '@/types/downtimes'
 import type { Incident } from '@/types/incidents'
 import { WrenchScrewdriverIcon } from '@heroicons/react/24/outline'
@@ -41,6 +43,7 @@ import type { EndpointResultsResponse } from '@/types/results'
 import type { StatusNode } from '@/types/statusTimeline'
 import { stripIdSuffix } from '@/utils/cleanup'
 import IncidentBanner from './IncidentBanner'
+import LatestProblemsDrawer from './LatestProblemsDrawer'
 
 const WEEK_DAY_COUNT = 7
 
@@ -322,25 +325,56 @@ interface NowItemProps {
   icon: LucideIcon
   label: string
   last?: boolean
+  /** When set, the item renders as a button */
+  onClick?: () => void
+  title?: string
   children: ReactNode
 }
 
-const NowItem = ({ icon: Icon, label, last, children }: NowItemProps) => {
-  return (
-    <div
-      className={`flex-1 min-w-[120px] px-4 py-2 ${
-        last ? '' : 'border-r border-neutral-200'
-      }`}
-    >
+const NowItem = ({
+  icon: Icon,
+  label,
+  last,
+  onClick,
+  title,
+  children,
+}: NowItemProps) => {
+  const base = `flex-1 min-w-[120px] px-4 py-2 ${
+    last ? '' : 'border-r border-neutral-200'
+  }`
+
+  const content = (
+    <>
       <div className="flex items-center gap-1.5 text-[11px] text-neutral-500">
         <Icon className="h-3 w-3" strokeWidth={2} />
         <span>{label}</span>
+        {onClick && (
+          <ChevronRight
+            className="ms-auto h-3.5 w-3.5 text-neutral-300 transition-colors group-hover:text-neutral-700"
+            strokeWidth={2}
+          />
+        )}
       </div>
       <div className="mt-0.5 flex items-baseline gap-1.5 text-[15px] font-medium text-neutral-900 tabular-nums">
         {children}
       </div>
-    </div>
+    </>
   )
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={title}
+        className={`${base} group cursor-pointer rounded text-left transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40`}
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return <div className={base}>{content}</div>
 }
 
 const SectionLabel = ({ children }: { children: ReactNode }) => {
@@ -467,6 +501,15 @@ export interface DashboardProps {
   endpointStatusData?: StatusNode[]
   endpointStatusLoading?: boolean
   endpointStatusError?: Error | null
+  /** Latest failing checks. When omitted, the counter, banner link and drawer are hidden. */
+  latestProblems?: {
+    data: LatestMetricData[] | undefined
+    isLoading: boolean
+    error: Error | null
+    updatedAt?: number
+    /** Status-timeline deep link for a check (mode-specific, built by the container) */
+    getMetricHref?: (check: LatestMetricData) => string
+  }
   statusData: GroupStatusResponse | undefined
   statusLoading: boolean
   statusError: Error | null
@@ -498,6 +541,7 @@ const Dashboard = ({
   endpointStatusData,
   endpointStatusLoading,
   endpointStatusError,
+  latestProblems,
   statusData,
   statusLoading,
   statusError,
@@ -510,7 +554,19 @@ const Dashboard = ({
   const [search, setSearch] = useState('')
   const [copied, setCopied] = useState(false)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [problemsOpen, setProblemsOpen] = useState(false)
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const openProblems = useCallback(() => setProblemsOpen(true), [])
+  const closeProblems = useCallback(() => setProblemsOpen(false), [])
+
+  const handleProblemEndpointSelect = useCallback(
+    (groupName: string, endpointName: string) => {
+      setProblemsOpen(false)
+      onEndpointSelect?.(groupName, endpointName)
+    },
+    [onEndpointSelect],
+  )
 
   useEffect(() => {
     return () => {
@@ -809,6 +865,10 @@ const Dashboard = ({
     [incidentsData],
   )
 
+  const failingChecksCount = latestProblems?.data?.length ?? 0
+  const showFailingChecksLink =
+    Boolean(latestProblems) && !latestProblems?.error && failingChecksCount > 0
+
   return (
     <div className="page-container">
       <div className="flex flex-col gap-2 mb-2">
@@ -931,6 +991,20 @@ const Dashboard = ({
                 {overall.detail}
               </span>
             </div>
+            {showFailingChecksLink && (
+              <button
+                type="button"
+                onClick={openProblems}
+                aria-haspopup="dialog"
+                aria-expanded={problemsOpen}
+                className={`inline-flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-md px-2 py-1 text-[13px] font-medium transition-colors hover:bg-black/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${b.headline}`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+                {failingChecksCount} failing check
+                {failingChecksCount === 1 ? '' : 's'}
+                <ChevronRight className="h-3.5 w-3.5" strokeWidth={2} />
+              </button>
+            )}
           </div>
           {/* Display incidents banner if any non-closed incidents exist */}
           <IncidentBanner
@@ -983,6 +1057,50 @@ const Dashboard = ({
                 <span className="text-gray-500">{counts.missing}</span>
               </span>
             </NowItem>
+            {latestProblems && (
+              <NowItem
+                icon={AlertTriangle}
+                label="Failing checks"
+                onClick={openProblems}
+                title="Show latest failing checks"
+              >
+                {latestProblems.error ? (
+                  <span className="text-neutral-400">—</span>
+                ) : latestProblems.isLoading && !latestProblems.data ? (
+                  <span className="text-neutral-400">…</span>
+                ) : (
+                  <>
+                    <span
+                      className={
+                        failingChecksCount > 0
+                          ? 'text-red-700'
+                          : 'text-emerald-700'
+                      }
+                    >
+                      {failingChecksCount}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 self-center text-[11px] font-medium group-hover:underline ${
+                        failingChecksCount > 0
+                          ? 'text-red-700'
+                          : 'text-neutral-500'
+                      }`}
+                    >
+                      {failingChecksCount > 0 && (
+                        <span
+                          className="relative flex h-2 w-2"
+                          aria-hidden="true"
+                        >
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 motion-safe:animate-ping" />
+                          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                        </span>
+                      )}
+                      View
+                    </span>
+                  </>
+                )}
+              </NowItem>
+            )}
             <NowItem icon={ShieldCheck} label="Availability today" last>
               <span>{todayAvail}</span>
               {todayAvail !== 'N/A' && todayAvail !== '—' && (
@@ -1284,6 +1402,22 @@ const Dashboard = ({
             </table>
           </section>
         </>
+      )}
+
+      {latestProblems && (
+        <LatestProblemsDrawer
+          open={problemsOpen}
+          onClose={closeProblems}
+          problems={latestProblems.data}
+          isLoading={latestProblems.isLoading}
+          error={latestProblems.error}
+          updatedAt={latestProblems.updatedAt}
+          reportName={selectedReport}
+          onEndpointSelect={
+            onEndpointSelect ? handleProblemEndpointSelect : undefined
+          }
+          getMetricHref={latestProblems.getMetricHref}
+        />
       )}
     </div>
   )
